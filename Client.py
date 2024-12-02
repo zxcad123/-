@@ -165,11 +165,6 @@ def make_move_gui(row, col):
 
         # 更新棋盘
         if "成功" in result:
-            if board[row][col] == '0':  # 确保位置为空
-                if FirOrSec == "first":
-                    board[row][col] = 'X'  
-                else:
-                    board[row][col] = 'O'
             refresh_board()  # 更新棋盘显示
     except Exception as e:
         messagebox.showerror("錯誤", f"落子失敗: {e}")

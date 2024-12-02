@@ -119,7 +119,6 @@ def make_move(player, game_id, row, col):
         c = conn.cursor()
         c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = "ongoing"', (game_id,))
         game = c.fetchone()
-
         if not game:
             return "遊戲無效或已結束。"
 
@@ -140,9 +139,74 @@ def make_move(player, game_id, row, col):
         # 檢查位置是否已被佔用
         if board_data[row * 8 + col] != '0':  # Check if the cell is empty
             return "這個位置已經被佔用。"
-
+        if current_player == game[4]:
+            flag = 0 #O的玩家
+        else:
+            flag = 1 #X的玩家
+        accept = 0
         # 更新棋盤狀態
-        board_data[row * 8 + col] = 'X' if current_player == game[1] else 'O'
+        if flag == 1:
+            for x,y in [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]]:
+                if (row + x) >= 0 and (row + x) < 8 and (col + y) >= 0 and (col + y) < 8:
+                    if board_data[(row + x) * 8 + (col + y)] == 'O':
+                        tempx = row
+                        tempy = col
+                        while True:
+                            row += x
+                            col += y
+                            if row < 0 or row >= 8 or col < 0 or col >=8:
+                                row = tempx
+                                col = tempy
+                                break
+                            if board_data[row * 8 + col] == '0':
+                                row = tempx
+                                col = tempy
+                                break
+                            if board_data[row * 8 + col] == 'X':
+                                while True:
+                                    row -= x
+                                    col -= y
+                                    if board_data[row * 8 + col] != '0':
+                                        board_data[row*8 + col] = 'X'
+                                    elif row <= tempx and col <= tempy:
+                                        break
+                                    else:
+                                        break
+                                accept = 1
+                                break
+        if flag == 0:
+            for x,y in [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]]:
+                if (row + x) >= 0 and (row + x) < 8 and (col + y) >= 0 and (col + y) < 8:
+                    if board_data[(row + x) * 8 + (col + y)] == 'X':
+                        tempx = row
+                        tempy = col
+                        while True:
+                            row += x
+                            col += y
+                            if row < 0 or row >= 8 or col < 0 or col >=8:
+                                row = tempx
+                                col = tempy
+                                break
+                            if board_data[row * 8 + col] == '0':
+                                row = tempx
+                                col = tempy
+                                break
+                            if board_data[row * 8 + col] == 'O':
+                                while True:
+                                    row -= x
+                                    col -= y
+                                    if board_data[row * 8 + col] != '0':
+                                        board_data[row*8 + col] = 'O'
+                                    elif row <= tempx and col <= tempy:
+                                        break
+                                    else:
+                                        break
+                                accept = 1
+                                break
+        if accept == 0:
+            return "不能下這裡"
+        else:
+            board_data[row * 8 + col] = 'O' if flag == 0 else 'X'
 
         # 把修改後的列表轉換回字符串
         updated_board = ''.join(board_data)
@@ -166,7 +230,7 @@ def get_board_state(game_id):
         board = c.fetchone()
         if board:
             board_data = list(board[0])
-            return [board_data[i:i+8] for i in range(0, 64, 8)]
+            return [board_data[i:i+8] for i in range(0, 64, 8)] #轉成[' '*64]
         else:
             raise Exception(f"Game ID {game_id} not found.")
 
