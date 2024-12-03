@@ -56,30 +56,35 @@ def poll_board_updates(game_id):
     while True:
         try:
             lock.acquire()
+            #print(game_id)
             board_state = server.check_board_data(game_id)
-            print(board_state)
-            print(board)
-            lock.release()
+            #print(board_state)
             if board_state:
-                # Updating the board data based on the server response
-                for i in range(8):
-                    for j in range(8):
-                        board[i][j] = board_state[i*8+j]
-                # After the board is updated, we call the function to refresh the display
-                root.after(1, refresh_board)
-            time.sleep(2)  # Sleep for 2 seconds to avoid excessive requests
+                #print(board)
+                lock.release()
+                if board_state:
+                    # Updating the board data based on the server response
+                    for i in range(8):
+                        for j in range(8):
+                            board[i][j] = board_state[i*8+j]
+                    # After the board is updated, we call the function to refresh the display
+                    root.after(1, refresh_board)
+                time.sleep(0.5)  # Sleep for 2 seconds to avoid excessive requests
+            else:
+                lock.release()
         except Exception as e:
             print(f"Polling failed: {e}")
-            break
+            poll_board_updates(game_id)
 
 
 # 刷新棋盘显示
 def refresh_board():
     global board, buttons
+    curr = server.get_curr_user(current_user,game_id)
     for row in range(8):
         for col in range(8):
             # Updating the button colors based on the current board state
-            color = 'gray' if board[row][col] == '0' else 'white' if board[row][col] == 'O' else 'black'
+            color = 'gray' if board[row][col] == '0' else 'white' if board[row][col] == 'O' else 'black' if board[row][col] == 'X' else 'red' if curr else 'gray'
             buttons[row][col].configure(bg=color)
     root.update()  # Refreshing the window display
 
@@ -88,26 +93,27 @@ def start_game_gui():
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
         return
-    
+    print("偵錯點1")
     try:
         lock.acquire()
         result = server.start_game(current_user)  # Request to start the game
         lock.release()
-        game_id = result[0]
         if current_user == result[2]:
             FirOrSec = "first"
         else:
             FirOrSec = "second"
         if "開始" in result:
+            print("偵錯點2")
+            game_id = result[0]
             # Starting a new window to display the game board
             new_window = tk.Toplevel()
             new_window.title("8x8 Chessboard")
             # Start the board polling in a separate thread
-            threading.Thread(target=poll_board_updates, args=(game_id,), daemon=True).start()
+            threading.Thread(target=poll_board_updates, args=(game_id), daemon=True).start()
             display_board(new_window)  # Display the board in the new window
             messagebox.showinfo("遊戲狀態", result)
         elif "等待" in result:
-            messagebox.showinfo("提示", "等待對手加入遊戲...")
+            #messagebox.showinfo("提示", "等待對手加入遊戲...")
             time.sleep(2)
             start_game_gui()
     except Exception as e:
@@ -132,12 +138,14 @@ def display_board(new_window):
         if result:
             # 更新 board 数据
             board = [list(result[i:i+8]) for i in range(0, len(result), 8)]
-            print(1111)
-            print(board)
-            print(1111)
     except Exception as e:
         print(f"获取棋盘数据失败: {e}")
         messagebox.showerror("錯誤", "無法取得棋盤資料")
+    name_label = tk.Label(user_info_frame, text="玩家1: " + current_user, width=10, height=3)
+    name_label.grid(row=0, column=1)
+
+    def on_button_click(row, col):
+        make_move_gui(row, col,new_window)
 
     # 畫出棋盤格子
     for row in range(8):  
@@ -147,10 +155,8 @@ def display_board(new_window):
             buttons[row][col] = button
     refresh_board()  # 更新棋盘显示
 
-def on_button_click(row, col):
-    make_move_gui(row, col)
 
-def make_move_gui(row, col):
+def make_move_gui(row, col,new_window):
     global current_user, game_id, board
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
@@ -158,14 +164,30 @@ def make_move_gui(row, col):
     try:
         lock.acquire()
         result = server.make_move(current_user, game_id, row, col)
-        print(board)
-        print(2222)
         lock.release()
         messagebox.showinfo("遊戲狀態", result)
 
         # 更新棋盘
         if "成功" in result:
             refresh_board()  # 更新棋盘显示
+        if "結束" in result:
+            black_num = 0
+            white_num = 0
+            refresh_board()
+            for i in range(8):
+                for j in range(8):
+                    if board[i][j] == "X":
+                        black_num += 1
+                    elif board[i][j] == "O":
+                        white_num += 1
+            if black_num > white_num:
+                messagebox.showinfo("遊戲結果", "黑棋勝利！")
+            else:
+                messagebox.showinfo("遊戲結果", "白棋勝利！")
+            server.shutdown_game(game_id,current_user)
+            game_id = 0
+            current_user = 0
+            new_window.destroy()
     except Exception as e:
         messagebox.showerror("錯誤", f"落子失敗: {e}")
 

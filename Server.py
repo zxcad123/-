@@ -43,7 +43,7 @@ def check_board_data(game_id):
         c.execute("SELECT board FROM board WHERE game_id = ?", (game_id,))
         row = c.fetchone()
         if row:
-            print(row[0])
+            #print(row[0])
             return row[0]
         return None
 
@@ -84,6 +84,7 @@ def start_game(player1):
         c.execute("SELECT * FROM games WHERE player1 = ? OR player2 = ?", (player1, player1))
         game = c.fetchone()
         if game:
+            print(player1)
             return f"{game[0]}遊戲已經開始，{game[4]} 為黑棋 , 目前為{game[3]}下棋"  # 獲取當前玩家
 
         # 將當前玩家狀態設為 waiting
@@ -105,13 +106,92 @@ def start_game(player1):
             c.execute('INSERT INTO games (player1, player2, current_player,first, game_status) VALUES (?, ?, ?, ? , ?)',
                         (player1, player2, current_player,current_player, "ongoing"))
             conn.commit()
-            game_id = c.lastrowid  # Get the game ID of the new game
-            c.execute("INSERT INTO board (game_id, board) VALUES (?, ?)", (game_id, "000000000000000000000000000OX000000XO000000000000000000000000000"))
+            c.execute('SELECT * from games where player1 == ? OR player2 == ?',(player1,player2))
+            game = c.fetchone()
+            game_id = game[0]  # Get the game ID of the new game
+            c.execute("INSERT INTO board (game_id, board) VALUES (?, ?)", (game_id, "00000000000000000000R000000OXR0000RXO000000R00000000000000000000"))
             conn.commit()
 
             return f"{game[0]}遊戲開始！{current_player} 為黑棋"
         else:
             return "等待中..."
+def valid(player, game_id, board_data):
+    #print(board_data)
+    num = 0
+    with sqlite3.connect(DB_NAME) as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM games WHERE game_id = ?", (game_id,))
+        game = c.fetchone()
+        if not game:
+            return {'accept': None, 'num': 0}  # 遊戲不存在
+
+        if player == game[4]:  # 決定玩家標誌
+            flag = 0  # O 的玩家
+        else:
+            flag = 1  # X 的玩家
+
+        accept = [['0'] * 8 for _ in range(8)]  # 初始化為 8x8 棋盤
+
+        # 遍歷棋盤
+        for i in range(8):
+            for j in range(8):
+                if flag == 1:  # X 的玩家
+                    for dx, dy in [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]:
+                        x, y = i, j
+                        if board_data[x * 8 + y] == 'X' or board_data[x*8+y] == 'O':  # 起始點不能是自己的棋子
+                            break
+
+                        x += dx 
+                        y += dy
+                        if 0 <= x < 8 and 0 <= y < 8 and board_data[x * 8 + y] == 'O':
+                            # 追蹤翻轉路徑
+                            while 0 <= x < 8 and 0 <= y < 8:
+                                x += dx
+                                y += dy
+                                if x < 0 or x >= 8 or y < 0 or y >= 8 or board_data[x * 8 + y] == 'R'or board_data[x * 8 + y] == '0':
+                                    break
+                                if board_data[x * 8 + y] == 'X':
+                                    accept[i][j] = '1'
+                                    x=i
+                                    y=j
+                                    num += 1
+                                    break
+
+                elif flag == 0:  # O 的玩家
+                    for dx, dy in [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]:
+                        x, y = i, j
+                        if board_data[x * 8 + y] == 'O' or board_data[x * 8 + y] == 'X':  # 起始點不能是自己的棋子
+                            break
+
+                        x += dx
+                        y += dy
+                        if 0 <= x < 8 and 0 <= y < 8 and board_data[x * 8 + y] == 'X':
+                            # 追蹤翻轉路徑
+                            while 0 <= x < 8 and 0 <= y < 8:
+                                x += dx
+                                y += dy
+                                if x < 0 or x >= 8 or y < 0 or y >= 8 or board_data[x * 8 + y] == '0' or board_data[x * 8 + y] == 'R':
+                                    break
+                                if board_data[x * 8 + y] == 'O':
+                                    accept[i][j] = '1'
+                                    x=i
+                                    y=j
+                                    num += 1
+                                    break
+        print(num)
+        return {'accept': accept, 'num': num}
+
+                
+def get_curr_user(player,game_id):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT current_player FROM games WHERE game_id = ?", (game_id,))
+        curr_user = cur.fetchone()[0]
+        print(curr_user)
+        if player == curr_user:
+            return True
+        else:
+            return False
 
 # 更新玩家輪到執行遊戲
 def make_move(player, game_id, row, col):
@@ -137,13 +217,15 @@ def make_move(player, game_id, row, col):
         board_data = list(board[0])
 
         # 檢查位置是否已被佔用
-        if board_data[row * 8 + col] != '0':  # Check if the cell is empty
+        if board_data[row * 8 + col] == 'O' or board_data[row * 8 + col] =='X':  # Check if the cell is empty
+            print(board_data[row * 8 + col])
             return "這個位置已經被佔用。"
         if current_player == game[4]:
             flag = 0 #O的玩家
         else:
             flag = 1 #X的玩家
         accept = 0
+        
         # 更新棋盤狀態
         if flag == 1:
             for x,y in [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]]:
@@ -166,10 +248,8 @@ def make_move(player, game_id, row, col):
                                 while True:
                                     row -= x
                                     col -= y
-                                    if board_data[row * 8 + col] != '0':
+                                    if board_data[row * 8 + col] != 'R':
                                         board_data[row*8 + col] = 'X'
-                                    elif row <= tempx and col <= tempy:
-                                        break
                                     else:
                                         break
                                 accept = 1
@@ -195,10 +275,8 @@ def make_move(player, game_id, row, col):
                                 while True:
                                     row -= x
                                     col -= y
-                                    if board_data[row * 8 + col] != '0':
+                                    if board_data[row * 8 + col] != 'R':
                                         board_data[row*8 + col] = 'O'
-                                    elif row <= tempx and col <= tempy:
-                                        break
                                     else:
                                         break
                                 accept = 1
@@ -208,17 +286,26 @@ def make_move(player, game_id, row, col):
         else:
             board_data[row * 8 + col] = 'O' if flag == 0 else 'X'
 
+        # 設定下個玩家
+        next_player = game[2] if current_player == game[1] else game[1]
+        c.execute('UPDATE games SET current_player = ? WHERE game_id = ?', (next_player, game_id))
+        for i in range(8):
+            for j in range(8):
+                if board_data[i*8+j] == 'R':
+                    board_data[i*8+j] = '0'
+        result= valid(next_player,game_id,board_data)
+        for i in range(8):
+            for j in range(8):
+                if result["accept"][i][j]=='1':
+                    board_data[i*8+j]='R'
         # 把修改後的列表轉換回字符串
         updated_board = ''.join(board_data)
 
         # 更新棋盤
         c.execute('UPDATE board SET board = ? WHERE game_id = ?', (updated_board, game_id))
-
-        # 設定下個玩家
-        next_player = game[2] if current_player == game[1] else game[1]
-        c.execute('UPDATE games SET current_player = ? WHERE game_id = ?', (next_player, game_id))
-
         conn.commit()
+        if result["num"] == 0:
+            return "遊戲結束"
         return f"成功執行步驟。{current_player}"
 
 
@@ -233,9 +320,48 @@ def get_board_state(game_id):
             return [board_data[i:i+8] for i in range(0, 64, 8)] #轉成[' '*64]
         else:
             raise Exception(f"Game ID {game_id} not found.")
+        
+def delete_game():
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            c = conn.cursor()
+            c.execute('DROP TABLE IF EXISTS games')
+            c.execute('DROP TABLE IF EXISTS board')
 
+            # 重新创建表
+            c.execute('''CREATE TABLE IF NOT EXISTS games (
+                game_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player1 TEXT,
+                player2 TEXT,
+                current_player TEXT,
+                first TEXT,
+                game_status TEXT
+            )''')
+            c.execute('''CREATE TABLE IF NOT EXISTS board (
+                game_id INTEGER,
+                board TEXT
+            )''')
+            conn.commit()
+        return "GOOD"
+    except Exception as e:
+        return f"刪除遊戲資料時出現錯誤：{str(e)}"
+def shutdown_game(game_id,current_user):
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            c = conn.cursor()
+            c.execute('UPDATE users SET status = "online" where username = ?',(current_user,))
+
+            c.execute('DELETE FROM board WHERE game_id = ?', (game_id,))
+            c.execute('DELETE FROM games WHERE game_id = ?', (game_id,))
+            conn.commit()
+            return "GOOD"
+    except Exception as e:
+        return f"關閉遊戲時出現錯誤：{str(e)}"
 # 初始化資料庫
 create_tables()
+result = delete_game()
+print(result)
+
 reset_user_status()
 
 # Start the XML-RPC server
@@ -246,5 +372,7 @@ with SimpleXMLRPCServer(("localhost", PORT), allow_none=True) as server:
     server.register_function(make_move)
     server.register_function(get_board_state)
     server.register_function(check_board_data)
+    server.register_function(get_curr_user)
+    server.register_function(shutdown_game)
     print(f"伺服器正在 {PORT} 埠運行...")
     server.serve_forever()
