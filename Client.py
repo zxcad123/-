@@ -39,6 +39,7 @@ def register_gui():
 
 def login_gui():
     global server, current_user
+    #logout 增加功能
     name = simpledialog.askstring("登入", "輸入使用者名稱：")
     password = simpledialog.askstring("登入", "輸入密碼：")
     try:
@@ -46,7 +47,11 @@ def login_gui():
         if "成功" in result:
             current_user = name
             a.set("玩家:" + current_user)
-        messagebox.showinfo("登入", result + ":" + current_user)
+            messagebox.showinfo("登入", result + ":" + current_user)
+        if "線上" in result:
+            messagebox.showerror("錯誤", "此帳號已被登入")
+        if "失敗" in result:
+            messagebox.showerror("錯誤", result)
     except Exception as e:
         messagebox.showerror("錯誤", f"登入失敗: {e}")
 
@@ -59,9 +64,9 @@ def poll_board_updates(game_id):
             #print(game_id)
             board_state = server.check_board_data(game_id)
             #print(board_state)
+            lock.release()
             if board_state:
                 #print(board)
-                lock.release()
                 if board_state:
                     # Updating the board data based on the server response
                     for i in range(8):
@@ -69,12 +74,11 @@ def poll_board_updates(game_id):
                             board[i][j] = board_state[i*8+j]
                     # After the board is updated, we call the function to refresh the display
                     root.after(1, refresh_board)
-                time.sleep(0.5)  # Sleep for 2 seconds to avoid excessive requests
-            else:
-                lock.release()
+                time.sleep(1)  # Sleep for 2 seconds to avoid excessive requests
+            #這裡要加東西
+                
         except Exception as e:
             print(f"Polling failed: {e}")
-            poll_board_updates(game_id)
 
 
 # 刷新棋盘显示
@@ -109,7 +113,8 @@ def start_game_gui():
             new_window = tk.Toplevel()
             new_window.title("8x8 Chessboard")
             # Start the board polling in a separate thread
-            threading.Thread(target=poll_board_updates, args=(game_id), daemon=True).start()
+            thread1=threading.Thread(target=poll_board_updates, args=(game_id),daemon=True)
+            thread1.start()
             display_board(new_window)  # Display the board in the new window
             messagebox.showinfo("遊戲狀態", result)
         elif "等待" in result:
@@ -140,7 +145,8 @@ def display_board(new_window):
             board = [list(result[i:i+8]) for i in range(0, len(result), 8)]
     except Exception as e:
         print(f"获取棋盘数据失败: {e}")
-        messagebox.showerror("錯誤", "無法取得棋盤資料")
+        display_board(new_window)
+        #messagebox.showerror("錯誤", "重新取得棋盤資料")
     name_label = tk.Label(user_info_frame, text="玩家1: " + current_user, width=10, height=3)
     name_label.grid(row=0, column=1)
 
@@ -181,12 +187,16 @@ def make_move_gui(row, col,new_window):
                     elif board[i][j] == "O":
                         white_num += 1
             if black_num > white_num:
+                lock.acquire()
+                server.shutdown_game(game_id,current_user)
+                lock.release()
                 messagebox.showinfo("遊戲結果", "黑棋勝利！")
             else:
+                lock.acquire()
+                server.shutdown_game(game_id,current_user)
+                lock.release()
                 messagebox.showinfo("遊戲結果", "白棋勝利！")
-            server.shutdown_game(game_id,current_user)
             game_id = 0
-            current_user = 0
             new_window.destroy()
     except Exception as e:
         messagebox.showerror("錯誤", f"落子失敗: {e}")

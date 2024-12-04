@@ -45,7 +45,7 @@ def check_board_data(game_id):
         if row:
             #print(row[0])
             return row[0]
-        return None
+        return 0
 
 # 註冊功能：將使用者名稱和密碼儲存至資料庫
 def register(username, password):
@@ -65,10 +65,13 @@ def login(username, password):
         c.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
         user = c.fetchone()
         if user:
-            c.execute('UPDATE users SET status = "online" WHERE username = ?', (username,))
-            conn.commit()
-            return "登入成功！"
-        return "登入失敗：帳號或密碼錯誤。"
+            if user[2] != "offline":
+                return "使用者已在線上。"
+            else:
+                c.execute('UPDATE users SET status = "online" WHERE username = ?', (username,))
+                conn.commit()
+                return "登入成功！"
+    return "登入失敗：帳號或密碼錯誤。"
 
 # 伺服器啟動時重置狀態
 def reset_user_status():
@@ -307,19 +310,6 @@ def make_move(player, game_id, row, col):
         if result["num"] == 0:
             return "遊戲結束"
         return f"成功執行步驟。{current_player}"
-
-
-# 获取棋盘状态
-def get_board_state(game_id):
-    with sqlite3.connect(DB_NAME) as conn:
-        c = conn.cursor()
-        c.execute('SELECT board FROM board WHERE game_id = ?', (game_id,))
-        board = c.fetchone()
-        if board:
-            board_data = list(board[0])
-            return [board_data[i:i+8] for i in range(0, 64, 8)] #轉成[' '*64]
-        else:
-            raise Exception(f"Game ID {game_id} not found.")
         
 def delete_game():
     try:
@@ -349,10 +339,15 @@ def shutdown_game(game_id,current_user):
     try:
         with sqlite3.connect(DB_NAME) as conn:
             c = conn.cursor()
-            c.execute('UPDATE users SET status = "online" where username = ?',(current_user,))
-
-            c.execute('DELETE FROM board WHERE game_id = ?', (game_id,))
-            c.execute('DELETE FROM games WHERE game_id = ?', (game_id,))
+            c.execute("SELETE * FROM games where player1 == ? or player2 == ?",(current_user,current_user))
+            user = c.fetchone()
+            print("akfopakfakfpakdpakfpaskmgfldsamkgodsogagmkldngmkadnmgklamgkladngoaenmfjkadngaengjkdgsnjdangmekjnoadmgjeangasnfjkewnfadnklgwenkjenm")
+            print(user)
+            c.execute('UPDATE users SET status = "online" where username = ?',(user[1],))
+            c.execute('UPDATE users SET status = "online" where username = ?',(user[2],))
+            print(user[0])
+            c.execute('DELETE FROM board WHERE game_id = ?', (user[0],))
+            c.execute('DELETE FROM games WHERE game_id = ?', (user[0],))
             conn.commit()
             return "GOOD"
     except Exception as e:
@@ -370,7 +365,6 @@ with SimpleXMLRPCServer(("localhost", PORT), allow_none=True) as server:
     server.register_function(login)
     server.register_function(start_game)
     server.register_function(make_move)
-    server.register_function(get_board_state)
     server.register_function(check_board_data)
     server.register_function(get_curr_user)
     server.register_function(shutdown_game)
