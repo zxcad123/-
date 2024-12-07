@@ -1,10 +1,18 @@
 import sqlite3
 from xmlrpc.server import SimpleXMLRPCServer
 import random
-
+import time
+import socket
 PORT = 8888
 DB_NAME = "users.db"  # 資料庫名稱
 
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('', 8888))
+		
+# Set socket non blocking
+server.setblocking(False)
+server.listen(5)
 # 創建資料庫連接和表格
 def create_tables():
     conn = sqlite3.connect(DB_NAME)
@@ -36,16 +44,40 @@ def create_tables():
     conn.commit()
     conn.close()
 
+def logout(player):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("UPDATE users SET status = 'offline' WHERE username = ?", (player,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # 捕获其他未知错误
+        print(f"未知錯誤：{e}")
+        return None
 # 檢查資料庫的board與client資料庫是否一致
 def check_board_data(game_id):
-    with sqlite3.connect(DB_NAME) as conn:
-        c = conn.cursor()
-        c.execute("SELECT board FROM board WHERE game_id = ?", (game_id,))
-        row = c.fetchone()
-        if row:
-            #print(row[0])
-            return row[0]
-        return 0
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            c = conn.cursor()
+            # 查询棋盘数据
+            c.execute("SELECT board FROM board WHERE game_id = ?", (game_id,))
+            row = c.fetchone()
+            
+            if row:
+                # 返回棋盘数据
+                return row[0]
+            
+            # 未找到数据
+            return None
+    except sqlite3.Error as e:
+        # 捕获数据库异常
+        print(f"資料庫錯誤：{e}")
+        return None
+    except Exception as e:
+        # 捕获其他未知错误
+        print(f"未知錯誤：{e}")
+        return None
 
 # 註冊功能：將使用者名稱和密碼儲存至資料庫
 def register(username, password):
@@ -68,6 +100,11 @@ def login(username, password):
             if user[2] != "offline":
                 return "使用者已在線上。"
             else:
+                #connection, (rip, rport) = server.accept()
+                #rep = "Welcome"
+                #server.send(rep.encode())
+                #msg = "Accept connection on port:  from (%s, %d)" %(str(rip), rport)
+                #print(msg)
                 c.execute('UPDATE users SET status = "online" WHERE username = ?', (username,))
                 conn.commit()
                 return "登入成功！"
@@ -191,13 +228,25 @@ def get_curr_user(player,game_id):
         cur.execute("SELECT current_player FROM games WHERE game_id = ?", (game_id,))
         curr_user = cur.fetchone()[0]
         print(curr_user)
+        cur.close
         if player == curr_user:
             return True
         else:
             return False
-
+def kill_game(game_id):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM games where game_id = ?", (game_id,))
+        game = cur.fetchone()
+        cur.close()
+        if game:
+            return 0
+        else:
+            return 1
 # 更新玩家輪到執行遊戲
 def make_move(player, game_id, row, col):
+    #data = server.recv(1024)
+    #server.send(data.decode())
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
         c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = "ongoing"', (game_id,))
@@ -230,56 +279,50 @@ def make_move(player, game_id, row, col):
         accept = 0
         
         # 更新棋盤狀態
-        if flag == 1:
-            for x,y in [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]]:
+        if flag == 1:  # X logic for flipping opponent's pieces
+            for x, y in [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]:
                 if (row + x) >= 0 and (row + x) < 8 and (col + y) >= 0 and (col + y) < 8:
                     if board_data[(row + x) * 8 + (col + y)] == 'O':
-                        tempx = row
-                        tempy = col
+                        tempx, tempy = row, col
                         while True:
                             row += x
                             col += y
-                            if row < 0 or row >= 8 or col < 0 or col >=8:
-                                row = tempx
-                                col = tempy
+                            if row < 0 or row >= 8 or col < 0 or col >= 8:
+                                row, col = tempx, tempy
                                 break
                             if board_data[row * 8 + col] == '0':
-                                row = tempx
-                                col = tempy
+                                row, col = tempx, tempy
                                 break
                             if board_data[row * 8 + col] == 'X':
                                 while True:
                                     row -= x
                                     col -= y
                                     if board_data[row * 8 + col] != 'R':
-                                        board_data[row*8 + col] = 'X'
+                                        board_data[row * 8 + col] = 'X'
                                     else:
                                         break
                                 accept = 1
                                 break
-        if flag == 0:
-            for x,y in [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]]:
+        elif flag == 0:  # O logic for flipping opponent's pieces
+            for x, y in [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]:
                 if (row + x) >= 0 and (row + x) < 8 and (col + y) >= 0 and (col + y) < 8:
                     if board_data[(row + x) * 8 + (col + y)] == 'X':
-                        tempx = row
-                        tempy = col
+                        tempx, tempy = row, col
                         while True:
                             row += x
                             col += y
-                            if row < 0 or row >= 8 or col < 0 or col >=8:
-                                row = tempx
-                                col = tempy
+                            if row < 0 or row >= 8 or col < 0 or col >= 8:
+                                row, col = tempx, tempy
                                 break
                             if board_data[row * 8 + col] == '0':
-                                row = tempx
-                                col = tempy
+                                row, col = tempx, tempy
                                 break
                             if board_data[row * 8 + col] == 'O':
                                 while True:
                                     row -= x
                                     col -= y
                                     if board_data[row * 8 + col] != 'R':
-                                        board_data[row*8 + col] = 'O'
+                                        board_data[row * 8 + col] = 'O'
                                     else:
                                         break
                                 accept = 1
@@ -307,6 +350,8 @@ def make_move(player, game_id, row, col):
         # 更新棋盤
         c.execute('UPDATE board SET board = ? WHERE game_id = ?', (updated_board, game_id))
         conn.commit()
+        c.close()
+        time.sleep(0.1)
         if result["num"] == 0:
             return "遊戲結束"
         return f"成功執行步驟。{current_player}"
@@ -332,15 +377,18 @@ def delete_game():
                 board TEXT
             )''')
             conn.commit()
+            c.close()
         return "GOOD"
     except Exception as e:
         return f"刪除遊戲資料時出現錯誤：{str(e)}"
-def shutdown_game(game_id,current_user):
+def shutdown_game(current_user):
     try:
         with sqlite3.connect(DB_NAME) as conn:
             c = conn.cursor()
-            c.execute("SELETE * FROM games where player1 == ? or player2 == ?",(current_user,current_user))
+            c.execute("SELECT * FROM games where player1 == ? or player2 == ?",(current_user,current_user))
             user = c.fetchone()
+            if not user:
+                return "未找到匹配的遊戲記錄。"
             print("akfopakfakfpakdpakfpaskmgfldsamkgodsogagmkldngmkadnmgklamgkladngoaenmfjkadngaengjkdgsnjdangmekjnoadmgjeangasnfjkewnfadnklgwenkjenm")
             print(user)
             c.execute('UPDATE users SET status = "online" where username = ?',(user[1],))
@@ -368,5 +416,7 @@ with SimpleXMLRPCServer(("localhost", PORT), allow_none=True) as server:
     server.register_function(check_board_data)
     server.register_function(get_curr_user)
     server.register_function(shutdown_game)
+    server.register_function(kill_game)
+    server.register_function(logout)
     print(f"伺服器正在 {PORT} 埠運行...")
     server.serve_forever()

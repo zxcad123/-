@@ -4,7 +4,7 @@ from tkinter import messagebox, simpledialog
 import xmlrpc.client
 import threading
 import time
-
+import socket
 lock = threading.Lock()
 
 PORT = 8888
@@ -13,6 +13,8 @@ current_user = None
 game_id = None  # 用來儲存當前遊戲 ID
 FirOrSec = "player1"
 root = tk.Tk()
+flag=0
+kill = 0
 colorarr = ["gray", "white", "black"]
 buttons = [['0']*8 for _ in range(8)]
 board = [['0', '0', '0', '0', '0', '0', '0', '0'],
@@ -45,6 +47,8 @@ def login_gui():
     try:
         result = server.login(name, password)
         if "成功" in result:
+            if current_user:
+                server.logout(current_user)
             current_user = name
             a.set("玩家:" + current_user)
             messagebox.showinfo("登入", result + ":" + current_user)
@@ -56,29 +60,42 @@ def login_gui():
         messagebox.showerror("錯誤", f"登入失敗: {e}")
 
 # 轮询棋盘更新
-def poll_board_updates(game_id):
-    global board
+
+def poll_board_updates(game_id, new_window):
+    global board, kill
     while True:
         try:
-            lock.acquire()
-            #print(game_id)
-            board_state = server.check_board_data(game_id)
-            #print(board_state)
-            lock.release()
-            if board_state:
-                #print(board)
+            # 使用锁来管理并发
+            with lock:
+                print(f"Polling game ID: {game_id}")
+                board_state = server.check_board_data(game_id)
+
                 if board_state:
-                    # Updating the board data based on the server response
                     for i in range(8):
                         for j in range(8):
-                            board[i][j] = board_state[i*8+j]
-                    # After the board is updated, we call the function to refresh the display
-                    root.after(1, refresh_board)
-                time.sleep(1)  # Sleep for 2 seconds to avoid excessive requests
-            #這裡要加東西
-                
+                            board[i][j] = board_state[i * 8 + j]
+
+            # 刷新 UI
+            root.after(0, refresh_board)
+
+            # 检查是否需要终止轮询
+            if kill == 1:
+                new_window.destroy()
+                kill = 0
+                break
+
+            # 适当延迟，避免过高的轮询频率
+            time.sleep(0.3)
         except Exception as e:
             print(f"Polling failed: {e}")
+            # 记录错误并决定是否继续
+            if kill == 1:
+                new_window.destroy()
+                kill = 0
+                break
+            time.sleep(1)
+            poll_board_updates(game_id, new_window)
+
 
 
 # 刷新棋盘显示
@@ -113,7 +130,7 @@ def start_game_gui():
             new_window = tk.Toplevel()
             new_window.title("8x8 Chessboard")
             # Start the board polling in a separate thread
-            thread1=threading.Thread(target=poll_board_updates, args=(game_id),daemon=True)
+            thread1=threading.Thread(target=poll_board_updates, args=(game_id,new_window),daemon=True)
             thread1.start()
             display_board(new_window)  # Display the board in the new window
             messagebox.showinfo("遊戲狀態", result)
@@ -130,9 +147,8 @@ def display_board(new_window):
     board_frame = tk.Frame(new_window)
     board_frame.grid(row=0, column=0)
     user_info_frame = tk.Frame(new_window)
-    user_info_frame.grid(row=1, column=0, pady=10)
+    user_info_frame.grid(row=0, column=1, padx=3)
 
-    cell_size = 50  # 每個格子的大小
     buttons = [[None for _ in range(8)] for _ in range(8)]
 
     # 从服务器获取当前棋盘状态
@@ -145,7 +161,6 @@ def display_board(new_window):
             board = [list(result[i:i+8]) for i in range(0, len(result), 8)]
     except Exception as e:
         print(f"获取棋盘数据失败: {e}")
-        display_board(new_window)
         #messagebox.showerror("錯誤", "重新取得棋盤資料")
     name_label = tk.Label(user_info_frame, text="玩家1: " + current_user, width=10, height=3)
     name_label.grid(row=0, column=1)
@@ -156,14 +171,16 @@ def display_board(new_window):
     # 畫出棋盤格子
     for row in range(8):  
         for col in range(8):  
-            button = tk.Button(board_frame, width=6, height=3, command=lambda r=row, c=col: on_button_click(r, c))
+            button = tk.Button(board_frame, width=6, height=2, command=lambda r=row, c=col: on_button_click(r, c))
             button.grid(row=row, column=col, padx=2, pady=2)
             buttons[row][col] = button
     refresh_board()  # 更新棋盘显示
 
+def kill_board(new_window):
+    new_window.destroy()
 
 def make_move_gui(row, col,new_window):
-    global current_user, game_id, board
+    global current_user, game_id, board,kill
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
         return
@@ -172,7 +189,9 @@ def make_move_gui(row, col,new_window):
         result = server.make_move(current_user, game_id, row, col)
         lock.release()
         messagebox.showinfo("遊戲狀態", result)
-
+        lock.acquire()
+        kill = server.kill_game(game_id)
+        lock.release()
         # 更新棋盘
         if "成功" in result:
             refresh_board()  # 更新棋盘显示
@@ -187,24 +206,24 @@ def make_move_gui(row, col,new_window):
                     elif board[i][j] == "O":
                         white_num += 1
             if black_num > white_num:
-                lock.acquire()
-                server.shutdown_game(game_id,current_user)
-                lock.release()
                 messagebox.showinfo("遊戲結果", "黑棋勝利！")
             else:
-                lock.acquire()
-                server.shutdown_game(game_id,current_user)
-                lock.release()
                 messagebox.showinfo("遊戲結果", "白棋勝利！")
+            lock.acquire()
+            server.shutdown_game(current_user)
+            time.sleep(1)
+            lock.release()
             game_id = 0
+        if kill == 1:
             new_window.destroy()
+            kill = 0
     except Exception as e:
-        messagebox.showerror("錯誤", f"落子失敗: {e}")
-
+        #messagebox.showerror("錯誤", f"落子失敗: {e}")
+        pass
 def main_gui():
     global server
     if len(sys.argv) < 1:
-        print("使用方法: python client.py serverIP")
+        print("使用方法: python client.py")
         sys.exit(1)
 
     server_ip = server
