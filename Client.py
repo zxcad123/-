@@ -160,9 +160,9 @@ def start_game_gui():
         result = server.start_game(current_user)  # Request to start the game
         lock.release()
         if current_user == result[2]:
-            FirOrSec = "first"
+            FirOrSec = "1"
         else:
-            FirOrSec = "second"
+            FirOrSec = "2"
         if "開始" in result:
             print("偵錯點2")
             game_id = result[0]
@@ -182,17 +182,22 @@ def start_game_gui():
         messagebox.showerror("錯誤", f"遊戲開始失敗: {e}")
 
 def root_break():
-    global root,current_user
+    global root,current_user,game_id
+    print(current_user)
+    print(game_id)
     if current_user:
         server.logout(current_user)
-        current_user = None
-
+        if game_id:
+            server.shutdown_game(current_user)
+            new_window_break()
+            game_id = 0
+    current_user = None
     sys.exit(0)
 
 
 
 def display_board(new_window):
-    global buttons, board
+    global buttons, board,FirOrSec
     board_frame = tk.Frame(new_window)
     board_frame.grid(row=0, column=0)
     user_info_frame = tk.Frame(new_window)
@@ -211,7 +216,7 @@ def display_board(new_window):
     except Exception as e:
         print(f"获取棋盘数据失败: {e}")
         #messagebox.showerror("錯誤", "重新取得棋盤資料")
-    name_label = tk.Label(user_info_frame, text="玩家1: " + current_user, width=10, height=3)
+    name_label = tk.Label(user_info_frame, text="玩家"+FirOrSec+": " + current_user, width=10, height=3)
     name_label.grid(row=0, column=1)
 
     def on_button_click(row, col):
@@ -277,7 +282,7 @@ def make_move_gui(row, col,new_window):
         pass
 
 def main_gui():
-    global server,current_user,game_id
+    global server,current_user,game_id,new_window
     if len(sys.argv) < 1:
         print("使用方法: python client.py")
         sys.exit(1)
@@ -296,12 +301,6 @@ def main_gui():
     tk.Button(root, text="退出", command=root.quit).pack(pady=5)
     root.protocol("WM_DELETE_WINDOW",root_break)
     root.mainloop()
-    if current_user:
-        server.logout(current_user)
-        current_user = None
-        if game_id:
-            server.shutdown_game(current_user)
-            game_id = 0
             
 if __name__ == "__main__":
     main_gui()
