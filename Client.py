@@ -29,10 +29,34 @@ board = [['0', '0', '0', '0', '0', '0', '0', '0'],
 a = tk.StringVar()
 a.set("未登入")
 
+def ask_account(prompt):
+    def on_ok():
+        nonlocal password,account
+        account  = entry1.get()
+        password = entry2.get()
+        dialog.destroy()
+
+    account = None
+    password = None
+    dialog = tk.Toplevel()
+    dialog.title(prompt)
+    dialog.geometry("300x200")
+    dialog.grab_set()  # 模态窗口
+    tk.Label(dialog, text="輸入帳號").pack(pady=10)
+    entry1 = tk.Entry(dialog)  # 输入框，隐藏字符
+    entry1.pack(pady=2)
+    entry1.focus_set()  # 自动聚焦输入框
+    tk.Label(dialog, text="輸入密碼").pack(pady=10)
+    entry2 = tk.Entry(dialog, show='*')  # 输入框，隐藏字符
+    entry2.pack(pady=2)
+    entry2.focus_set()  # 自动聚焦输入框
+    tk.Button(dialog, text="確定", command=on_ok).pack(pady=10)
+
+    dialog.wait_window()  # 等待窗口关闭
+    return (account,password,)
 def register_gui():
     global server
-    name = simpledialog.askstring("註冊", "輸入使用者名稱：")
-    password = simpledialog.askstring("註冊", "輸入密碼：")
+    name,password = ask_account("註冊")
     try:
         result = server.register(name, password)
         messagebox.showinfo("註冊", result)
@@ -42,8 +66,7 @@ def register_gui():
 def login_gui():
     global server, current_user
     #logout 增加功能
-    name = simpledialog.askstring("登入", "輸入使用者名稱：")
-    password = simpledialog.askstring("登入", "輸入密碼：")
+    name,password = ask_account("登入")
     try:
         result = server.login(name, password)
         if "成功" in result:
@@ -60,11 +83,29 @@ def login_gui():
         messagebox.showerror("錯誤", f"登入失敗: {e}")
 
 # 轮询棋盘更新
+def new_window_break():
+    global current_user,game_id,board
+    result = server.opponent_win(current_user,game_id)
+    game_id = 0
+    #server.shutdown_game(current_user)
+    print(result)
+    thread1.do_run = False
+    board = [['0', '0', '0', '0', '0', '0', '0', '0'],
+         ['0', '0', '0', '0', '0', '0', '0', '0'],
+         ['0', '0', '0', '0', '0', '0', '0', '0'],
+         ['0', '0', '0', 'O', 'X', '0', '0', '0'],
+         ['0', '0', '0', 'X', 'O', '0', '0', '0'],
+         ['0', '0', '0', '0', '0', '0', '0', '0'],
+         ['0', '0', '0', '0', '0', '0', '0', '0'],
+         ['0', '0', '0', '0', '0', '0', '0', '0']]
+    new_window.destroy()
 
 def poll_board_updates(game_id, new_window):
-    global board, kill
-    while True:
+    global board, kill ,current_user,thread1
+    thread1 = threading.current_thread()
+    while getattr(thread1, "do_run", True):
         try:
+            new_window.protocol("WM_DELETE_WINDOW",new_window_break)
             # 使用锁来管理并发
             with lock:
                 print(f"Polling game ID: {game_id}")
@@ -97,10 +138,9 @@ def poll_board_updates(game_id, new_window):
             poll_board_updates(game_id, new_window)
 
 
-
 # 刷新棋盘显示
 def refresh_board():
-    global board, buttons
+    global board, buttons,current_user,game_id
     curr = server.get_curr_user(current_user,game_id)
     for row in range(8):
         for col in range(8):
@@ -110,7 +150,7 @@ def refresh_board():
     root.update()  # Refreshing the window display
 
 def start_game_gui():
-    global current_user, game_id,FirOrSec
+    global current_user, game_id,FirOrSec,new_window
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
         return
@@ -140,6 +180,15 @@ def start_game_gui():
             start_game_gui()
     except Exception as e:
         messagebox.showerror("錯誤", f"遊戲開始失敗: {e}")
+
+def root_break():
+    global root,current_user
+    if current_user:
+        server.logout(current_user)
+        current_user = None
+
+    sys.exit(0)
+
 
 
 def display_board(new_window):
@@ -185,16 +234,20 @@ def make_move_gui(row, col,new_window):
         messagebox.showinfo("提示", "請先登入！")
         return
     try:
-        lock.acquire()
-        result = server.make_move(current_user, game_id, row, col)
-        lock.release()
-        messagebox.showinfo("遊戲狀態", result)
-        lock.acquire()
-        kill = server.kill_game(game_id)
-        lock.release()
+        with lock:
+            result = server.make_move(current_user, game_id, row, col)
+            #messagebox.showinfo("遊戲狀態", result)
+            kill = server.kill_game(game_id)
         # 更新棋盘
         if "成功" in result:
             refresh_board()  # 更新棋盘显示
+        elif "離開" in result:
+            new_window_break()
+            messagebox.showinfo("遊戲狀態", result)
+            server.shutdown(current_user)
+            game_id = 0
+        elif "結束" not in result:
+            messagebox.showinfo("遊戲狀態", result)
         if "結束" in result:
             black_num = 0
             white_num = 0
@@ -209,6 +262,7 @@ def make_move_gui(row, col,new_window):
                 messagebox.showinfo("遊戲結果", "黑棋勝利！")
             else:
                 messagebox.showinfo("遊戲結果", "白棋勝利！")
+            new_window_break()
             lock.acquire()
             server.shutdown_game(current_user)
             time.sleep(1)
@@ -219,9 +273,11 @@ def make_move_gui(row, col,new_window):
             kill = 0
     except Exception as e:
         #messagebox.showerror("錯誤", f"落子失敗: {e}")
+        #make_move_gui(row,col,new_window)
         pass
+
 def main_gui():
-    global server
+    global server,current_user,game_id
     if len(sys.argv) < 1:
         print("使用方法: python client.py")
         sys.exit(1)
@@ -232,13 +288,20 @@ def main_gui():
     root.title('黑白棋')
     root.geometry('380x400')
     root.resizable(False, False)
-    txt = tk.Label(root, textvariable=a, font=('Arial', 20), anchor='nw', width=5, height=2, pady=5)
+    txt = tk.Label(root, textvariable=a, font=('Arial', 20), anchor='nw', width=5, height=2, pady=5,padx=20)
     txt.pack()
     tk.Button(root, text="註冊", command=register_gui).pack(pady=5)
     tk.Button(root, text="登入", command=login_gui).pack(pady=5)
     tk.Button(root, text="開始遊戲", command=start_game_gui).pack(pady=5)
     tk.Button(root, text="退出", command=root.quit).pack(pady=5)
+    root.protocol("WM_DELETE_WINDOW",root_break)
     root.mainloop()
-
+    if current_user:
+        server.logout(current_user)
+        current_user = None
+        if game_id:
+            server.shutdown_game(current_user)
+            game_id = 0
+            
 if __name__ == "__main__":
     main_gui()

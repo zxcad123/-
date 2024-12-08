@@ -55,12 +55,13 @@ def logout(player):
         # 捕获其他未知错误
         print(f"未知錯誤：{e}")
         return None
-# 檢查資料庫的board與client資料庫是否一致
+
 def check_board_data(game_id):
     try:
         with sqlite3.connect(DB_NAME) as conn:
             c = conn.cursor()
             # 查询棋盘数据
+
             c.execute("SELECT board FROM board WHERE game_id = ?", (game_id,))
             row = c.fetchone()
             
@@ -121,7 +122,7 @@ def reset_user_status():
 def start_game(player1):
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
-        c.execute("SELECT * FROM games WHERE player1 = ? OR player2 = ?", (player1, player1))
+        c.execute("SELECT * FROM games WHERE (player1 = ? OR player2 = ? )and game_status == 'ongoing'", (player1, player1))
         game = c.fetchone()
         if game:
             print(player1)
@@ -146,7 +147,7 @@ def start_game(player1):
             c.execute('INSERT INTO games (player1, player2, current_player,first, game_status) VALUES (?, ?, ?, ? , ?)',
                         (player1, player2, current_player,current_player, "ongoing"))
             conn.commit()
-            c.execute('SELECT * from games where player1 == ? OR player2 == ?',(player1,player2))
+            c.execute('SELECT * from games where (player1 == ? OR player2 == ?) and game_status = "ongoing"',(player1,player2))
             game = c.fetchone()
             game_id = game[0]  # Get the game ID of the new game
             c.execute("INSERT INTO board (game_id, board) VALUES (?, ?)", (game_id, "00000000000000000000R000000OXR0000RXO000000R00000000000000000000"))
@@ -238,7 +239,6 @@ def kill_game(game_id):
         cur = conn.cursor()
         cur.execute("SELECT * FROM games where game_id = ?", (game_id,))
         game = cur.fetchone()
-        cur.close()
         if game:
             return 0
         else:
@@ -249,10 +249,14 @@ def make_move(player, game_id, row, col):
     #server.send(data.decode())
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
+        c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = ?', (game_id,player))
+        win = c.fetchone()
+        if win:
+            return f"對手離開了,{player}已獲勝"
         c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = "ongoing"', (game_id,))
         game = c.fetchone()
         if not game:
-            return "遊戲無效或已結束。"
+            return "遊戲結束。"
 
         # 檢查當前玩家是否是輪到行動的玩家
         current_player = game[3]
@@ -355,7 +359,29 @@ def make_move(player, game_id, row, col):
         if result["num"] == 0:
             return "遊戲結束"
         return f"成功執行步驟。{current_player}"
-        
+
+def opponent_win(player,game_id):
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            c = conn.cursor()
+            c.execute('SELECT player1,player2 FROM games WHERE game_id = ?', (game_id,))
+            game = c.fetchone()
+            if game:
+                if game[0] == player:
+                    c.execute('UPDATE games SET game_status = ? where game_id == ?', (game[1],game_id,))
+                else:
+                    c.execute('UPDATE games SET game_status = ? where game_id == ?', (game[0],game_id,))
+                #c.execute('DELETE FROM board WHERE game_id = ?', (game_id,))
+                #c.execute('DELETE FROM games WHERE game_id = ?', (game_id,))
+                conn.commit()
+                if game[0] == player:
+                    return game[1]
+                else:
+                    return game[0]
+            else:
+                return 0
+    except Exception as e:
+        return f"關閉遊戲時出現錯誤:{str(e)}"
 def delete_game():
     try:
         with sqlite3.connect(DB_NAME) as conn:
@@ -381,6 +407,7 @@ def delete_game():
         return "GOOD"
     except Exception as e:
         return f"刪除遊戲資料時出現錯誤：{str(e)}"
+
 def shutdown_game(current_user):
     try:
         with sqlite3.connect(DB_NAME) as conn:
@@ -394,8 +421,9 @@ def shutdown_game(current_user):
             c.execute('UPDATE users SET status = "online" where username = ?',(user[1],))
             c.execute('UPDATE users SET status = "online" where username = ?',(user[2],))
             print(user[0])
-            c.execute('DELETE FROM board WHERE game_id = ?', (user[0],))
-            c.execute('DELETE FROM games WHERE game_id = ?', (user[0],))
+            print((user[0],))
+            c.execute('DELETE FROM board WHERE game_id = ?', user[0])
+            c.execute('DELETE FROM games WHERE game_id = ?', user[0])
             conn.commit()
             return "GOOD"
     except Exception as e:
@@ -418,5 +446,6 @@ with SimpleXMLRPCServer(("localhost", PORT), allow_none=True) as server:
     server.register_function(shutdown_game)
     server.register_function(kill_game)
     server.register_function(logout)
+    server.register_function(opponent_win)
     print(f"伺服器正在 {PORT} 埠運行...")
     server.serve_forever()
