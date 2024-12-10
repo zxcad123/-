@@ -229,10 +229,7 @@ def display_board(new_window):
             button.grid(row=row, column=col, padx=2, pady=2)
             buttons[row][col] = button
     refresh_board()  # 更新棋盘显示
-
-def kill_board(new_window):
-    new_window.destroy()
-
+    
 def make_move_gui(row, col,new_window):
     global current_user, game_id, board,kill
     if not current_user:
@@ -249,7 +246,7 @@ def make_move_gui(row, col,new_window):
         elif "離開" in result:
             new_window_break()
             messagebox.showinfo("遊戲狀態", result)
-            server.shutdown(current_user)
+            server.shutdown_game(current_user)
             game_id = 0
         elif "結束" not in result:
             messagebox.showinfo("遊戲狀態", result)
@@ -268,10 +265,6 @@ def make_move_gui(row, col,new_window):
             else:
                 messagebox.showinfo("遊戲結果", "白棋勝利！")
             new_window_break()
-            lock.acquire()
-            server.shutdown_game(current_user)
-            time.sleep(1)
-            lock.release()
             game_id = 0
         if kill == 1:
             new_window.destroy()

@@ -126,7 +126,7 @@ def start_game(player1):
         game = c.fetchone()
         if game:
             print(player1)
-            return f"{game[0]}遊戲已經開始，{game[4]} 為黑棋 , 目前為{game[3]}下棋"  # 獲取當前玩家
+            return f"{game[0]}遊戲已經開始，{game[4]} 為白棋 , 目前為{game[3]}下棋"  # 獲取當前玩家
 
         # 將當前玩家狀態設為 waiting
         c.execute("UPDATE users SET status = 'waiting' WHERE username = ?", (player1,))
@@ -153,7 +153,7 @@ def start_game(player1):
             c.execute("INSERT INTO board (game_id, board) VALUES (?, ?)", (game_id, "00000000000000000000R000000OXR0000RXO000000R00000000000000000000"))
             conn.commit()
 
-            return f"{game[0]}遊戲開始！{current_player} 為黑棋"
+            return f"{game[0]}遊戲開始！{current_player} 為白棋"
         else:
             return "等待中..."
 def valid(player, game_id, board_data):
@@ -249,10 +249,10 @@ def make_move(player, game_id, row, col):
     #server.send(data.decode())
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
-        c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = ?', (game_id,player))
+        c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = player1 or game_status = player2', (game_id,))
         win = c.fetchone()
         if win:
-            return f"對手離開了,{player}已獲勝"
+            return f"對手離開了,{win[5]}已獲勝"
         c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = "ongoing"', (game_id,))
         game = c.fetchone()
         if not game:
