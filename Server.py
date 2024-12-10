@@ -243,15 +243,23 @@ def kill_game(game_id):
             return 0
         else:
             return 1
+        
+
 # 更新玩家輪到執行遊戲
 def make_move(player, game_id, row, col):
     #data = server.recv(1024)
     #server.send(data.decode())
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
-        c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = player1 or game_status = player2', (game_id,))
+        c.execute('SELECT player1,player2 FROM games WHERE game_id = ?',(game_id,))
+        player1,player2 = c.fetchone()
+        print(player1)
+        print(player2)
+        c.execute('SELECT * FROM games WHERE game_id = ? AND (game_status = ? or game_status = ?)', (game_id,player1,player2))
         win = c.fetchone()
+        
         if win:
+            print(win)
             return f"對手離開了,{win[5]}已獲勝"
         c.execute('SELECT * FROM games WHERE game_id = ? AND game_status = "ongoing"', (game_id,))
         game = c.fetchone()
@@ -368,12 +376,14 @@ def opponent_win(player,game_id):
             game = c.fetchone()
             if game:
                 if game[0] == player:
-                    c.execute('UPDATE games SET game_status = ? where game_id == ?', (game[1],game_id,))
+                    c.execute('UPDATE games SET game_status = ? where game_id = ?', (game[1],game_id,))
                 else:
-                    c.execute('UPDATE games SET game_status = ? where game_id == ?', (game[0],game_id,))
+                    c.execute('UPDATE games SET game_status = ? where game_id = ?', (game[0],game_id,))
                 #c.execute('DELETE FROM board WHERE game_id = ?', (game_id,))
                 #c.execute('DELETE FROM games WHERE game_id = ?', (game_id,))
                 conn.commit()
+                print("DASDSDADSDASDSDSADASDDASD")
+                print(game[0])
                 if game[0] == player:
                     return game[1]
                 else:
@@ -407,7 +417,7 @@ def delete_game():
         return "GOOD"
     except Exception as e:
         return f"刪除遊戲資料時出現錯誤：{str(e)}"
-
+'''
 def shutdown_game(current_user):
     try:
         with sqlite3.connect(DB_NAME) as conn:
@@ -428,6 +438,7 @@ def shutdown_game(current_user):
             return "GOOD"
     except Exception as e:
         return f"關閉遊戲時出現錯誤：{str(e)}"
+'''
 # 初始化資料庫
 create_tables()
 result = delete_game()
@@ -443,7 +454,7 @@ with SimpleXMLRPCServer(("localhost", PORT), allow_none=True) as server:
     server.register_function(make_move)
     server.register_function(check_board_data)
     server.register_function(get_curr_user)
-    server.register_function(shutdown_game)
+    #server.register_function(shutdown_game)
     server.register_function(kill_game)
     server.register_function(logout)
     server.register_function(opponent_win)

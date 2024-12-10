@@ -82,13 +82,12 @@ def login_gui():
     except Exception as e:
         messagebox.showerror("錯誤", f"登入失敗: {e}")
 
-# 轮询棋盘更新
+
 def new_window_break():
     global current_user,game_id,board
     result = server.opponent_win(current_user,game_id)
-    game_id = 0
-    #server.shutdown_game(current_user)
     print(result)
+    #server.shutdown_game(current_user)
     thread1.do_run = False
     board = [['0', '0', '0', '0', '0', '0', '0', '0'],
          ['0', '0', '0', '0', '0', '0', '0', '0'],
@@ -188,7 +187,7 @@ def root_break():
     if current_user:
         server.logout(current_user)
         if game_id:
-            server.shutdown_game(current_user)
+            #server.shutdown_game(current_user)
             new_window_break()
             game_id = 0
     current_user = None
@@ -229,9 +228,9 @@ def display_board(new_window):
             button.grid(row=row, column=col, padx=2, pady=2)
             buttons[row][col] = button
     refresh_board()  # 更新棋盘显示
-    
+
 def make_move_gui(row, col,new_window):
-    global current_user, game_id, board,kill
+    global current_user, game_id, board,kill,flag
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
         return
@@ -240,17 +239,40 @@ def make_move_gui(row, col,new_window):
             result = server.make_move(current_user, game_id, row, col)
             #messagebox.showinfo("遊戲狀態", result)
             kill = server.kill_game(game_id)
+            #print(result)
         # 更新棋盘
         if "成功" in result:
             refresh_board()  # 更新棋盘显示
         elif "離開" in result:
-            new_window_break()
-            messagebox.showinfo("遊戲狀態", result)
-            server.shutdown_game(current_user)
+            #print(result)
+            #messagebox.showinfo("遊戲結果", "黑棋勝利！")
+            if flag == 1:
+                flag = 0
+                for i in range(8):
+                    for j in range(8):
+                        if board[i][j] == "X":
+                            black_num += 1
+                        elif board[i][j] == "O":
+                            white_num += 1
+                if black_num > white_num:
+                    new_window_break()
+                    messagebox.showinfo("遊戲結果", "黑棋勝利！")
+                else:
+                    new_window_break()
+                    messagebox.showinfo("遊戲結果", "白棋勝利！")
+            else:
+                print(result)
+                txt ="對手已離開,"+current_user+"勝利"
+                print(txt)
+                messagebox.showinfo("遊戲結果", txt)
+                new_window_break()
+            #messagebox.showinfo("遊戲狀態", result)
+            #server.shutdown(current_user)
             game_id = 0
         elif "結束" not in result:
             messagebox.showinfo("遊戲狀態", result)
         if "結束" in result:
+            flag = 1
             black_num = 0
             white_num = 0
             refresh_board()
@@ -265,6 +287,10 @@ def make_move_gui(row, col,new_window):
             else:
                 messagebox.showinfo("遊戲結果", "白棋勝利！")
             new_window_break()
+            #lock.acquire()
+            #server.shutdown_game(current_user)
+            #time.sleep(1)
+            #lock.release()
             game_id = 0
         if kill == 1:
             new_window.destroy()
@@ -291,7 +317,7 @@ def main_gui():
     tk.Button(root, text="註冊", command=register_gui).pack(pady=5)
     tk.Button(root, text="登入", command=login_gui).pack(pady=5)
     tk.Button(root, text="開始遊戲", command=start_game_gui).pack(pady=5)
-    tk.Button(root, text="退出", command=root.quit).pack(pady=5)
+    tk.Button(root, text="退出", command=root_break).pack(pady=5)
     root.protocol("WM_DELETE_WINDOW",root_break)
     root.mainloop()
             
