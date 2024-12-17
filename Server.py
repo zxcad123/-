@@ -61,10 +61,10 @@ def check_board_data(game_id):
         with sqlite3.connect(DB_NAME) as conn:
             c = conn.cursor()
             # 查询棋盘数据
-
+            print("dsadsaddasdasdassdasdsadasdsadsadasdsad")
             c.execute("SELECT board FROM board WHERE game_id = ?", (game_id,))
             row = c.fetchone()
-            
+            print(row[0])
             if row:
                 # 返回棋盘数据
                 return row[0]
@@ -392,6 +392,15 @@ def opponent_win(player,game_id):
                 return 0
     except Exception as e:
         return f"關閉遊戲時出現錯誤:{str(e)}"
+def kill_account(current_user):
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM users WHERE username = ?', (current_user,))
+            conn.commit()
+            return "成功關閉帳號"
+    except Exception as e:
+        return f"關閉帳號時出現錯誤:{str(e)}"
 def delete_game():
     try:
         with sqlite3.connect(DB_NAME) as conn:
@@ -442,7 +451,7 @@ def shutdown_game(current_user):
 # 初始化資料庫
 create_tables()
 result = delete_game()
-print(result)
+#print(result)
 
 reset_user_status()
 
@@ -454,7 +463,7 @@ with SimpleXMLRPCServer(("localhost", PORT), allow_none=True) as server:
     server.register_function(make_move)
     server.register_function(check_board_data)
     server.register_function(get_curr_user)
-    #server.register_function(shutdown_game)
+    server.register_function(kill_account)
     server.register_function(kill_game)
     server.register_function(logout)
     server.register_function(opponent_win)

@@ -15,7 +15,9 @@ FirOrSec = "player1"
 root = tk.Tk()
 flag=0
 kill = 0
-colorarr = ["gray", "white", "black"]
+limit = 0
+lflag = 0
+start_flag = 0
 buttons = [['0']*8 for _ in range(8)]
 board = [['0', '0', '0', '0', '0', '0', '0', '0'],
          ['0', '0', '0', '0', '0', '0', '0', '0'],
@@ -84,9 +86,13 @@ def login_gui():
 
 
 def new_window_break():
-    global current_user,game_id,board
-    result = server.opponent_win(current_user,game_id)
-    print(result)
+    global current_user,game_id,board,start_flag,flag
+    start_flag = 0
+    if flag == 0:
+        result = server.opponent_win(current_user,game_id)
+        print(result)
+    else:
+        flag = 0
     #server.shutdown_game(current_user)
     thread1.do_run = False
     board = [['0', '0', '0', '0', '0', '0', '0', '0'],
@@ -100,7 +106,7 @@ def new_window_break():
     new_window.destroy()
 
 def poll_board_updates(game_id, new_window):
-    global board, kill ,current_user,thread1
+    global board, kill ,current_user,thread1,limit,lflag
     thread1 = threading.current_thread()
     while getattr(thread1, "do_run", True):
         try:
@@ -123,7 +129,23 @@ def poll_board_updates(game_id, new_window):
                 new_window.destroy()
                 kill = 0
                 break
-
+            with lock:
+                result = server.get_curr_user(current_user,game_id)
+                if result:
+                    limit+=1
+                else:
+                    limit=0
+            if limit > 50 and lflag==0:
+                messagebox.showwarning("警告","請快點下棋")
+                lflag=1
+            if limit > 100:
+                messagebox.showwarning("警告","掛機仔永BAN")
+                new_window_break()
+                new_window.destroy()
+                server.kill_account(current_user)
+                current_user = None
+                a.set("未登入")
+                game_id = 0
             # 适当延迟，避免过高的轮询频率
             time.sleep(0.3)
         except Exception as e:
@@ -140,7 +162,8 @@ def poll_board_updates(game_id, new_window):
 # 刷新棋盘显示
 def refresh_board():
     global board, buttons,current_user,game_id
-    curr = server.get_curr_user(current_user,game_id)
+    with lock:
+        curr = server.get_curr_user(current_user,game_id)
     for row in range(8):
         for col in range(8):
             # Updating the button colors based on the current board state
@@ -149,11 +172,17 @@ def refresh_board():
     root.update()  # Refreshing the window display
 
 def start_game_gui():
-    global current_user, game_id,FirOrSec,new_window
+    global current_user, game_id,FirOrSec,new_window,start_flag
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
         return
     print("偵錯點1")
+    if start_flag == 1:
+        messagebox.showwarning("提示", "遊戲已經開始！")
+        return
+    if flag == 1:
+        messagebox.showwarning("AWA","觀戰中禁止配對")
+        return
     try:
         lock.acquire()
         result = server.start_game(current_user)  # Request to start the game
@@ -163,6 +192,7 @@ def start_game_gui():
         else:
             FirOrSec = "2"
         if "開始" in result:
+            start_flag = 1
             print("偵錯點2")
             game_id = result[0]
             # Starting a new window to display the game board
@@ -177,6 +207,8 @@ def start_game_gui():
             #messagebox.showinfo("提示", "等待對手加入遊戲...")
             time.sleep(2)
             start_game_gui()
+        else:
+            messagebox.showinfo("提示", result)
     except Exception as e:
         messagebox.showerror("錯誤", f"遊戲開始失敗: {e}")
 
@@ -193,7 +225,28 @@ def root_break():
     current_user = None
     sys.exit(0)
 
-
+def watch_game():
+    global flag,current_user,new_window,game_id
+    if not current_user:
+        messagebox.showinfo("提示", "請先登入！")
+    else:
+        if start_flag == 1:
+            messagebox.showwarning("QAQ","遊戲開始禁止觀戰")
+            return
+        if flag == 1:
+            messagebox.showwarning("已在觀戰中")
+            return
+        flag = 1
+        game_id = simpledialog.askinteger("0.0","請輸入你要觀看的對局")
+        #result = server.check_board_data(game_id)
+        new_window = tk.Toplevel()
+        new_window.title("8x8 Chessboard")
+        # Start the board polling in a separate thread
+        thread1=threading.Thread(target=poll_board_updates, args=(game_id,new_window),daemon=True)
+        thread1.start()
+        print("OK1")
+        display_board(new_window)  # Display the board in the new window
+        #print(result)
 
 def display_board(new_window):
     global buttons, board,FirOrSec
@@ -203,11 +256,14 @@ def display_board(new_window):
     user_info_frame.grid(row=0, column=1, padx=3)
 
     buttons = [[None for _ in range(8)] for _ in range(8)]
-
+    print("OK3")
+    print(game_id)
     # 从服务器获取当前棋盘状态
     try:
         lock.acquire()
+        print(game_id)
         result = server.check_board_data(game_id)
+        print("OK2")
         lock.release()
         if result:
             # 更新 board 数据
@@ -215,12 +271,11 @@ def display_board(new_window):
     except Exception as e:
         print(f"获取棋盘数据失败: {e}")
         #messagebox.showerror("錯誤", "重新取得棋盤資料")
-    name_label = tk.Label(user_info_frame, text="玩家"+FirOrSec+": " + current_user, width=10, height=3)
+    name_label = tk.Label(user_info_frame, text="玩家"+": " + current_user, width=10, height=3)
     name_label.grid(row=0, column=1)
 
     def on_button_click(row, col):
         make_move_gui(row, col,new_window)
-
     # 畫出棋盤格子
     for row in range(8):  
         for col in range(8):  
@@ -230,12 +285,18 @@ def display_board(new_window):
     refresh_board()  # 更新棋盘显示
 
 def make_move_gui(row, col,new_window):
-    global current_user, game_id, board,kill,flag
+    global current_user, game_id, board,kill,flag,lflag
     if not current_user:
         messagebox.showinfo("提示", "請先登入！")
         return
     try:
+        if flag == 1:
+            new_window.destroy()
+            flag = 0
+            game_id = 0
+            thread1.do_run = False
         with lock:
+            lflag=0
             result = server.make_move(current_user, game_id, row, col)
             #messagebox.showinfo("遊戲狀態", result)
             kill = server.kill_game(game_id)
@@ -246,33 +307,18 @@ def make_move_gui(row, col,new_window):
         elif "離開" in result:
             #print(result)
             #messagebox.showinfo("遊戲結果", "黑棋勝利！")
-            if flag == 1:
-                flag = 0
-                for i in range(8):
-                    for j in range(8):
-                        if board[i][j] == "X":
-                            black_num += 1
-                        elif board[i][j] == "O":
-                            white_num += 1
-                if black_num > white_num:
-                    new_window_break()
-                    messagebox.showinfo("遊戲結果", "黑棋勝利！")
-                else:
-                    new_window_break()
-                    messagebox.showinfo("遊戲結果", "白棋勝利！")
-            else:
-                print(result)
-                txt ="對手已離開,"+current_user+"勝利"
-                print(txt)
-                messagebox.showinfo("遊戲結果", txt)
-                new_window_break()
+            print(result)
+            #txt ="對手已離開,"+current_user+"勝利"
+            #print(txt)
+            messagebox.showinfo("遊戲結果", result)
+            new_window_break()
             #messagebox.showinfo("遊戲狀態", result)
             #server.shutdown(current_user)
             game_id = 0
         elif "結束" not in result:
             messagebox.showinfo("遊戲狀態", result)
         if "結束" in result:
-            flag = 1
+            #flag = 1
             black_num = 0
             white_num = 0
             refresh_board()
@@ -317,6 +363,7 @@ def main_gui():
     tk.Button(root, text="註冊", command=register_gui).pack(pady=5)
     tk.Button(root, text="登入", command=login_gui).pack(pady=5)
     tk.Button(root, text="開始遊戲", command=start_game_gui).pack(pady=5)
+    tk.Button(root, text="觀戰", command=watch_game).pack(pady=5)
     tk.Button(root, text="退出", command=root_break).pack(pady=5)
     root.protocol("WM_DELETE_WINDOW",root_break)
     root.mainloop()
