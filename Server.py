@@ -61,7 +61,7 @@ def check_board_data(game_id):
         with sqlite3.connect(DB_NAME) as conn:
             c = conn.cursor()
             # 查询棋盘数据
-            print("dsadsaddasdasdassdasdsadasdsadsadasdsad")
+            #print("dsadsaddasdasdassdasdsadasdsadsadasdsad")
             c.execute("SELECT board FROM board WHERE game_id = ?", (game_id,))
             row = c.fetchone()
             print(row[0])
@@ -70,15 +70,15 @@ def check_board_data(game_id):
                 return row[0]
             
             # 未找到数据
-            return None
+            return "無法找到該對局"
     except sqlite3.Error as e:
         # 捕获数据库异常
         print(f"資料庫錯誤：{e}")
-        return None
+        return "無法找到該對局"
     except Exception as e:
         # 捕获其他未知错误
         print(f"未知錯誤：{e}")
-        return None
+        return "無法找到該對局"
 
 # 註冊功能：將使用者名稱和密碼儲存至資料庫
 def register(username, password):

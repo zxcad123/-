@@ -51,7 +51,6 @@ def ask_account(prompt):
     tk.Label(dialog, text="輸入密碼").pack(pady=10)
     entry2 = tk.Entry(dialog, show='*')  # 输入框，隐藏字符
     entry2.pack(pady=2)
-    entry2.focus_set()  # 自动聚焦输入框
     tk.Button(dialog, text="確定", command=on_ok).pack(pady=10)
 
     dialog.wait_window()  # 等待窗口关闭
@@ -90,7 +89,7 @@ def new_window_break():
     start_flag = 0
     if flag == 0:
         result = server.opponent_win(current_user,game_id)
-        print(result)
+        #print(result)
     else:
         flag = 0
     #server.shutdown_game(current_user)
@@ -113,7 +112,7 @@ def poll_board_updates(game_id, new_window):
             new_window.protocol("WM_DELETE_WINDOW",new_window_break)
             # 使用锁来管理并发
             with lock:
-                print(f"Polling game ID: {game_id}")
+                #print(f"Polling game ID: {game_id}")
                 board_state = server.check_board_data(game_id)
 
                 if board_state:
@@ -149,7 +148,7 @@ def poll_board_updates(game_id, new_window):
             # 适当延迟，避免过高的轮询频率
             time.sleep(0.3)
         except Exception as e:
-            print(f"Polling failed: {e}")
+            #print(f"Polling failed: {e}")
             # 记录错误并决定是否继续
             if kill == 1:
                 new_window.destroy()
@@ -193,7 +192,7 @@ def start_game_gui():
             FirOrSec = "2"
         if "開始" in result:
             start_flag = 1
-            print("偵錯點2")
+            #print("偵錯點2")
             game_id = result[0]
             # Starting a new window to display the game board
             new_window = tk.Toplevel()
@@ -214,8 +213,8 @@ def start_game_gui():
 
 def root_break():
     global root,current_user,game_id
-    print(current_user)
-    print(game_id)
+    #print(current_user)
+    #print(game_id)
     if current_user:
         server.logout(current_user)
         if game_id:
@@ -234,17 +233,22 @@ def watch_game():
             messagebox.showwarning("QAQ","遊戲開始禁止觀戰")
             return
         if flag == 1:
-            messagebox.showwarning("已在觀戰中")
+            messagebox.showwarning("aaaaa","已在觀戰中")
             return
         flag = 1
         game_id = simpledialog.askinteger("0.0","請輸入你要觀看的對局")
-        #result = server.check_board_data(game_id)
+        with lock:
+            result = server.check_board_data(game_id)
+            if "無法" in result:
+                flag = 0
+                messagebox.showinfo("提示", result)
+                return
         new_window = tk.Toplevel()
         new_window.title("8x8 Chessboard")
         # Start the board polling in a separate thread
         thread1=threading.Thread(target=poll_board_updates, args=(game_id,new_window),daemon=True)
         thread1.start()
-        print("OK1")
+        #print("OK1")
         display_board(new_window)  # Display the board in the new window
         #print(result)
 
@@ -256,8 +260,8 @@ def display_board(new_window):
     user_info_frame.grid(row=0, column=1, padx=3)
 
     buttons = [[None for _ in range(8)] for _ in range(8)]
-    print("OK3")
-    print(game_id)
+    #print("OK3")
+    #print(game_id)
     # 从服务器获取当前棋盘状态
     try:
         lock.acquire()
@@ -269,7 +273,8 @@ def display_board(new_window):
             # 更新 board 数据
             board = [list(result[i:i+8]) for i in range(0, len(result), 8)]
     except Exception as e:
-        print(f"获取棋盘数据失败: {e}")
+        pass
+        #print(f"获取棋盘数据失败: {e}")
         #messagebox.showerror("錯誤", "重新取得棋盤資料")
     name_label = tk.Label(user_info_frame, text="玩家"+": " + current_user, width=10, height=3)
     name_label.grid(row=0, column=1)
@@ -307,7 +312,7 @@ def make_move_gui(row, col,new_window):
         elif "離開" in result:
             #print(result)
             #messagebox.showinfo("遊戲結果", "黑棋勝利！")
-            print(result)
+            #print(result)
             #txt ="對手已離開,"+current_user+"勝利"
             #print(txt)
             messagebox.showinfo("遊戲結果", result)
